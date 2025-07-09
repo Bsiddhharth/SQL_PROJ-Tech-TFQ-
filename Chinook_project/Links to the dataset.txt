@@ -1,0 +1,7 @@
+15 SQL Projects Ideas for Data Analysis to Practice in 2022
+https://www.projectpro.io/article/sql-database-projects-for-data-analysis-to-practice/565
+
+
+Chinook Dataset:
+Main repository: https://github.com/lerocha/chinook-database
+Download files: https://github.com/lerocha/chinook-database/tree/master/ChinookDatabase/DataSources
