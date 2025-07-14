@@ -227,3 +227,286 @@ from temp t
 join album al on t.albumid = al.albumid
 join artist art on art.artistid = al.artistid
 order by t.no_of_tracks desc;
+
+
+--9) Display the track, album, artist 
+--and the genre for all tracks which are not purchased.
+
+--finding connection
+-- artist -> album -> track -> Genre
+
+select t.name, al.title, ar.name, g.name
+from artist ar 
+join album al  on ar.artistid = al.artistid
+join track t on al.albumid = t.albumid
+join genre g on t.genreid = g.genreid
+where t.trackid not in (
+    select trackid from invoiceline
+)
+
+-- using left join
+SELECT t.name, al.title, ar.name, g.name
+FROM track t
+JOIN album al ON t.albumid = al.albumid
+JOIN artist ar ON al.artistid = ar.artistid
+JOIN genre g ON t.genreid = g.genreid
+left join invoiceline inv on t.trackid = inv.trackid
+where inv.trackid is null;
+
+--
+SELECT 
+    t.name AS track_name,
+    al.title AS album_title,
+    art.name AS artist_name,
+    g.name AS genre
+FROM Track t
+JOIN Album al ON al.AlbumId = t.AlbumId
+JOIN Artist art ON art.ArtistId = al.ArtistId
+JOIN Genre g ON g.GenreId = t.GenreId
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM InvoiceLine il
+    WHERE il.TrackId = t.TrackId
+);
+
+
+--10) Find artist who have performed in multiple genres. 
+-- Diplay the aritst name and the genre.
+
+--finding connection
+-- artist -> album -> track -> genre
+
+-- below querry shows the artist name and the no_of_genres
+SELECT 
+    a.name AS artist_name,
+    COUNT(distinct g.genreid) AS no_of_genres
+FROM artist a 
+JOIN album al ON a.artistid = al.artistid
+JOIN track t ON al.albumid = t.albumid
+JOIN genre g ON t.genreid = g.genreid
+GROUP BY a.artistid, a.name
+HAVING COUNT(distinct g.genreid) > 1;
+
+
+--
+
+with temp as
+        (select distinct art.name as artist_name, g.name as genre
+        from Track t
+        join album al on al.albumid=t.albumid
+        join artist art on art.artistid = al.artistid
+        join genre g on g.genreid = t.genreid
+        order by 1,2),
+    final_artist as
+        (select artist_name
+        from temp t
+        group by artist_name
+        having count(1) > 1)
+select t.*
+from temp t
+join final_artist fa on fa.artist_name = t.artist_name
+order by 1,2;
+
+--
+
+SELECT 
+    artist_name,
+    STRING_AGG(genre, ', ' ORDER BY genre) AS genres
+FROM (
+    SELECT DISTINCT art.name AS artist_name, g.name AS genre
+    FROM Track t
+    JOIN Album al ON al.albumid = t.albumid
+    JOIN Artist art ON art.artistid = al.artistid
+    JOIN Genre g ON g.genreid = t.genreid
+) temp
+GROUP BY artist_name
+HAVING COUNT(DISTINCT genre) > 1
+ORDER BY artist_name;
+
+
+-- 11) Which is the most popular and least popular genre?
+-- Popularity is defined based on how many times it has been purchased.
+
+-- finding connection 
+
+with temp as (
+    select distinct g.name as genre_name, 
+    rank() over(order by count(1) desc) as rnk_genre
+    from track t 
+    join genre g on t.genreid = g.genreid
+    join invoiceline i on t.trackid = i.trackid
+    group by g.name
+),
+temp2 as(
+    select max(rnk_genre) as max_rnk 
+    from temp
+)
+
+select genre_name, 'most_popular' as popularity
+from temp where rnk_genre = 1
+union all
+select genre_name, 'least_popular' as popularity
+from temp where (rnk_genre in (select max_rnk from temp2))
+
+----
+with temp as
+        (select distinct g.name
+        , count(1) as no_of_purchases
+        , rank() over(order by count(1) desc) as rnk
+        from InvoiceLine il
+        join track t on t.trackid = il.trackid
+        join genre g on g.genreid = t.genreid
+        group by g.name
+        order by 2 desc),
+    temp2 as
+        (select max(rnk) as max_rnk from temp)
+select name as genre
+, case when rnk = 1 then 'Most Popular' else 'Least Popular' end as popular
+from temp
+cross join temp2
+where rnk = 1 or rnk = max_rnk;
+
+
+-- 12) Identify if there are tracks more expensive than others. 
+-- If there are then display the track name along with the album title
+--  and artist name for these expensive tracks.
+
+
+-- all tracks except the one with lowest unitprice?
+
+select t.name as track_name, a.title as album_title, 
+    ar.name as artist_name, t.unitprice as unitprice
+from  track t 
+join album a on t.albumid = a.albumid
+join artist ar on a.artistid = ar.artistid
+where t.unitprice > (select min(unitprice) from track)
+order by track_name
+
+
+
+-- 13) Identify the 5 most popular artist for the most popular genre.
+--     Popularity is defined based on how many songs an artist 
+--     has performed in for the particular genre.
+--     Display the artist name along with the no of songs.
+--     [Reason: Now that we know that our customers love rock music, 
+--     we can decide which musicians to invite to play at the concert.
+--     Lets invite the artists who have written the most rock music in our dataset.]
+
+
+--lets find the most poupular genre first then do the rest
+
+
+with most_popular_genre as
+    (select genre 
+    from  (select distinct g.name as genre ,
+            rank() over(order by count(*) desc) as rnk_gnr
+        from track t 
+        join genre g on t.genreid = g.genreid
+        join invoiceline i on t.trackid = i.trackid
+        group by  g.name)x
+    where x.rnk_gnr = 1),
+
+    ---- or 
+
+    -- (select g.name as genre 
+    -- from track t 
+    -- join genre g on t.genreid = g.genreid
+    -- join invoiceline i on t.trackid = i.trackid
+    -- group by  g.name
+    -- order by count(*) desc
+    -- limit 1),
+
+    popular_artist as   
+    (select a.name  as artist_name,
+    count(*) as no_of_songs,
+    rank() over(order by count(*) desc) as rnk_artist
+    from artist a
+    join album al on a.artistid = al.artistid 
+    join track t on al.albumid = t.albumid 
+    join genre g on t.genreid = g.genreid
+    where g.name in (select genre from most_popular_genre)
+    group  by a.name 
+    ) 
+select artist_name, no_of_songs, rnk_artist
+from popular_artist 
+where rnk_artist <=5
+
+
+-- 14) Find the artist who has contributed with the maximum no of songs/tracks. 
+-- Display the artist name and the no of songs.
+
+select a.name ,  
+    count(t.trackid) as no_of_tracks 
+from artist a 
+join album al on a.artistid = al.artistid
+join track t on al.albumid = t.albumid
+group by a.name 
+order by no_of_tracks desc
+limit 1
+
+-- 
+select artist_name , no_of_tracks
+from   (select a.name as artist_name,  
+        count(t.trackid) as no_of_tracks,
+        rank() over (order by count(t.trackid) desc) as rnk
+    from artist a 
+    join album al on a.artistid = al.artistid
+    join track t on al.albumid = t.albumid
+    group by a.name )x
+where x.rnk = 1
+
+
+-- 15) Are there any albums owned by multiple artist?
+
+select albumid, count(*) as no_of_artist
+from album
+group by albumid
+having count(*) > 1 
+
+
+-- 16) Is there any invoice 
+-- which is issued to a non existing customer?
+
+select *
+from invoice i
+where i.customerid not in (
+    select customerid from customer
+)
+-- above code works fine but 
+--If any CustomerId in Customer is NULL, 
+--this can return no results due to how NOT IN works with NULLs
+
+-- below code safely handles the above issue
+
+SELECT *
+FROM Invoice i
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM Customer c
+    WHERE c.CustomerId = i.CustomerId
+);
+
+
+-- 17) Is there any invoice line for a non existing invoice?
+
+SELECT *
+FROM InvoiceLine i
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM Invoice iv
+    WHERE iv.invoiceid = i.invoiceid
+);
+
+
+--18) Are there albums without a title?
+select title
+from album 
+where title is null
+
+--
+select count(*) from albumw
+where title is null
+
+
+-- 19) Are there invalid tracks in the playlist?
+
