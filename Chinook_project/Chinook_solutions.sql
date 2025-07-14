@@ -510,3 +510,19 @@ where title is null
 
 -- 19) Are there invalid tracks in the playlist?
 
+select * 
+from PlaylistTrack  p
+where not exists (
+    select 1 
+    from track t
+    where p.trackid = t.trackid
+)
+
+--
+SELECT pt.*, pl.Name AS playlist_name
+FROM PlaylistTrack pt
+LEFT JOIN Track t ON pt.TrackId = t.TrackId
+JOIN Playlist pl ON pl.PlaylistId = pt.PlaylistId
+WHERE t.TrackId IS NULL;
+
+
